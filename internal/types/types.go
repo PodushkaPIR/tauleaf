@@ -1,10 +1,23 @@
 package types
 
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"time"
+)
+
+func GenerateToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 type Config struct {
 	ProjectPath string
 	MainTex     string
-	Engine     string
-	Addr       string
+	Engine      string
+	Addr        string
+	AccessCode  string
 }
 
 type Project struct {
@@ -27,4 +40,26 @@ type Comment struct {
 	Text    string    `json:"text"`
 	Author  string    `json:"author"`
 	Content string    `json:"content"`
+}
+
+type AccessConfig struct {
+	AccessCode string    `json:"access_code"`
+	Created    time.Time `json:"created"`
+}
+
+type AuthRequest struct {
+	AccessCode string `json:"access_code"`
+}
+
+type AuthResponse struct {
+	Token string `json:"token"`
+}
+
+type Session struct {
+	Token   string    `json:"token"`
+	Created time.Time `json:"created"`
+}
+
+type SessionStore struct {
+	sessions map[string]*Session
 }
