@@ -12,6 +12,9 @@ tauleaf
 # tauleaf runtime
 .tauleaf/
 
+# Local projects
+my-latex-project/
+
 # Editor
 .idea/
 .vscode/
