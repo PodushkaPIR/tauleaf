@@ -1,0 +1,12 @@
+services:
+  tauleaf:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./my-latex-project:/project
+    environment:
+      - TAU_PROJECT=/project
+      - TAU_MAIN=main.tex
+      - TAU_ENGINE=lualatex
+    restart: unless-stopped

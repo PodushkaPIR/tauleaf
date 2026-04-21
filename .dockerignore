@@ -1,0 +1,31 @@
+tauleaf
+*.exe
+*.pdf
+*.log
+*.aux
+*.out
+*.toc
+*.synctex.gz
+
+# tauleaf runtime
+.tauleaf/
+
+# Git
+.git
+.gitignore
+
+# Docs
+README.md
+AGENTS.md
+docs/
+
+# Test project
+test-project/
+
+# Node
+node_modules/
+
+# IDE
+.idea/
+*.swp
+*.swo
