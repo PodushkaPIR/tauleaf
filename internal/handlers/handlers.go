@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 
@@ -19,10 +20,26 @@ import (
 var webRoot string
 
 type Handler struct {
-	cfg      *types.Config
+	cfg     *types.Config
 	upgrader websocket.Upgrader
-	clients  map[*websocket.Conn]bool
-	auth     *auth.Auth
+	clients map[*websocket.Conn]bool
+	auth    *auth.Auth
+	mu      sync.Mutex
+}
+
+func (h *Handler) broadcast(msgType string, payload any) {
+	msg := types.WSMessage{
+		Type:    msgType,
+		Payload: payload,
+	}
+	data, _ := json.Marshal(msg)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for conn := range h.clients {
+		conn.WriteMessage(websocket.TextMessage, data)
+	}
 }
 
 func New(cfg *types.Config, webDir string, auth *auth.Auth) *Handler {
@@ -53,6 +70,7 @@ func Register(mux *http.ServeMux, cfg *types.Config, webDir string, auth *auth.A
 	mux.HandleFunc("/api/project", h.requireAuth(h.handleProject))
 	mux.HandleFunc("/api/files", h.requireAuth(h.handleFiles))
 	mux.HandleFunc("/api/file", h.requireAuth(h.handleFile))
+	mux.HandleFunc("/api/save", h.requireAuth(h.handleSaveFile))
 	mux.HandleFunc("/api/compile", h.requireAuth(h.handleCompile))
 	mux.HandleFunc("/api/upload", h.requireAuth(h.handleUpload))
 
@@ -108,6 +126,11 @@ func (h *Handler) handleFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	name := r.URL.Query().Get("name")
 	if name == "" {
 		http.Error(w, "missing file name", http.StatusBadRequest)
@@ -125,6 +148,37 @@ func (h *Handler) handleFile(w http.ResponseWriter, r *http.Request) {
 	w.Write(content)
 }
 
+func (h *Handler) handleSaveFile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing file name", http.StatusBadRequest)
+		return
+	}
+
+	content, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	path := filepath.Join(h.cfg.ProjectPath, name)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		http.Error(w, "failed to save file", http.StatusInternalServerError)
+		return
+	}
+
+	h.broadcast("file-changed", name)
+
+	jsonEncode(w, map[string]string{"status": "saved"})
+}
+
 func (h *Handler) handleCompile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -134,18 +188,22 @@ func (h *Handler) handleCompile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	jsonEncode(w, map[string]string{"status": "started"})
 
+	h.broadcast("compiling", true)
+
 	go func() {
 		defer func() {
 			if rec := recover(); rec != nil {
 				log.Println("compile goroutine recovered:", rec)
 			}
 		}()
-		
+
 		c := compile.New(h.cfg.ProjectPath, h.cfg.MainTex, h.cfg.Engine)
 		err := c.Compile()
 		if err != nil {
 			log.Println("compile error:", err)
 		}
+		h.broadcast("compiling", false)
+		h.broadcast("pdf-ready", nil)
 		log.Println("compile done")
 	}()
 }

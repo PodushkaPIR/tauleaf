@@ -14,6 +14,7 @@ var fileList = document.getElementById('file-list');
 var currentFileEl = document.getElementById('current-file');
 var pdfViewer = document.getElementById('pdf-viewer');
 var recompileBtn = document.getElementById('recompile-btn');
+var saveBtn = document.getElementById('save-btn');
 var logoutBtn = document.getElementById('logout-btn');
 var adminBtn = document.getElementById('admin-btn');
 var adminModal = document.getElementById('admin-modal');
@@ -233,6 +234,8 @@ function handleWSMessage(msg) {
         case 'file-changed':
             if (msg.payload === currentFile) {
                 loadFileContent(currentFile);
+                var editorEl = document.getElementById('editor');
+                editorEl.title = 'File changed by another user';
             }
             loadFiles();
             break;
@@ -299,7 +302,7 @@ async function loadFileContent(file) {
             return;
         }
         if (resp.ok) {
-            editor.textContent = await resp.text();
+            editor.value = await resp.text();
         }
     } catch (e) {
         console.error('Failed to load file:', e);
@@ -315,8 +318,8 @@ function refreshPDF() {
 recompileBtn.onclick = function() {
     recompileBtn.disabled = true;
     recompileBtn.textContent = 'Compiling...';
-    
-    fetch('/api/compile', { 
+
+    fetch('/api/compile', {
         method: 'POST',
         headers: getAuthHeaders()
     }).then(function(resp) {
@@ -333,6 +336,33 @@ recompileBtn.onclick = function() {
         recompileBtn.disabled = false;
         recompileBtn.textContent = 'Recompile';
     });
+};
+
+saveBtn.onclick = async function() {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+        var resp = await fetch('/api/save?name=' + encodeURIComponent(currentFile), {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: editor.value
+        });
+
+        if (!resp.ok) {
+            throw new Error('Failed to save');
+        }
+
+        saveBtn.textContent = 'Saved!';
+        setTimeout(function() {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+        }, 1000);
+    } catch (e) {
+        alert('Save failed: ' + e.message);
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+    }
 };
 
 checkAuth();
