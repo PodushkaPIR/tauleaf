@@ -1,12 +1,183 @@
 var project = null;
 var currentFile = null;
 var ws = null;
+var token = localStorage.getItem('tauleaf_token');
+
+var loginScreen = document.getElementById('login-screen');
+var app = document.getElementById('app');
+var accessCodeInput = document.getElementById('access-code');
+var loginBtn = document.getElementById('login-btn');
+var loginError = document.getElementById('login-error');
 
 var editor = document.getElementById('editor');
 var fileList = document.getElementById('file-list');
 var currentFileEl = document.getElementById('current-file');
 var pdfViewer = document.getElementById('pdf-viewer');
 var recompileBtn = document.getElementById('recompile-btn');
+var logoutBtn = document.getElementById('logout-btn');
+var adminBtn = document.getElementById('admin-btn');
+var adminModal = document.getElementById('admin-modal');
+var closeAdminBtn = document.getElementById('close-admin');
+var adminCodeEl = document.getElementById('admin-code');
+var adminCreatedEl = document.getElementById('admin-created');
+var regenerateBtn = document.getElementById('regenerate-btn');
+var adminMessageEl = document.getElementById('admin-message');
+
+function showLogin() {
+    loginScreen.classList.remove('hidden');
+    app.classList.add('hidden');
+}
+
+function showApp() {
+    loginScreen.classList.add('hidden');
+    app.classList.remove('hidden');
+}
+
+function getAuthHeaders() {
+    return { 'Authorization': token };
+}
+
+async function login() {
+    var code = accessCodeInput.value.trim();
+    if (!code) {
+        loginError.textContent = 'Please enter access code';
+        loginError.classList.remove('hidden');
+        return;
+    }
+
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Loading...';
+
+    try {
+        var resp = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ access_code: code })
+        });
+
+        if (!resp.ok) {
+            throw new Error('Invalid access code');
+        }
+
+        var data = await resp.json();
+        token = data.token;
+        localStorage.setItem('tauleaf_token', token);
+
+        showApp();
+        await init();
+    } catch (e) {
+        loginError.textContent = 'Invalid access code';
+        loginError.classList.remove('hidden');
+    } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Login';
+    }
+}
+
+loginBtn.onclick = login;
+accessCodeInput.onkeydown = function(e) {
+    if (e.key === 'Enter') login();
+};
+
+logoutBtn.onclick = async function() {
+    await fetch('/api/auth', {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+    });
+    localStorage.removeItem('tauleaf_token');
+    token = null;
+    showLogin();
+};
+
+adminBtn.onclick = async function() {
+    var resp = await fetch('/api/admin/config', { headers: getAuthHeaders() });
+    var data = await resp.json();
+    adminCodeEl.textContent = data.access_code;
+    adminCreatedEl.textContent = new Date(data.created).toLocaleString();
+    adminMessageEl.classList.add('hidden');
+    adminModal.classList.remove('hidden');
+};
+
+closeAdminBtn.onclick = function() {
+    adminModal.classList.add('hidden');
+};
+
+regenerateBtn.onclick = async function() {
+    if (!confirm('Generate new access code? All current sessions will be invalidated.')) {
+        return;
+    }
+    var resp = await fetch('/api/admin/regenerate', {
+        method: 'POST',
+        headers: getAuthHeaders()
+    });
+    var data = await resp.json();
+    adminCodeEl.textContent = data.access_code;
+    adminCreatedEl.textContent = new Date().toLocaleString();
+    adminMessageEl.textContent = 'New code generated!';
+    adminMessageEl.classList.remove('hidden');
+};
+
+var uploadBtn = document.getElementById('upload-btn');
+var fileInput = document.getElementById('file-input');
+
+uploadBtn.onclick = function() {
+    fileInput.click();
+};
+
+fileInput.onchange = async function() {
+    if (this.files.length === 0) return;
+
+    var file = this.files[0];
+    var formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        var resp = await fetch('/api/upload', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: formData
+        });
+
+        if (!resp.ok) {
+            var err = await resp.text();
+            alert('Upload failed: ' + err);
+            return;
+        }
+
+        var data = await resp.json();
+        console.log('Uploaded:', data);
+        await loadFiles();
+    } catch (e) {
+        alert('Upload failed: ' + e.message);
+    }
+
+    this.value = '';
+};
+
+async function checkAuth() {
+    if (!token) {
+        showLogin();
+        return;
+    }
+
+    try {
+        var resp = await fetch('/api/auth/validate', {
+            headers: getAuthHeaders()
+        });
+        var data = await resp.json();
+
+        if (data.valid) {
+            showApp();
+            await init();
+        } else {
+            localStorage.removeItem('tauleaf_token');
+            token = null;
+            showLogin();
+        }
+    } catch (e) {
+        showLogin();
+    }
+}
 
 async function init() {
     await loadProject();
@@ -16,7 +187,12 @@ async function init() {
 
 async function loadProject() {
     try {
-        var resp = await fetch('/api/project');
+        var resp = await fetch('/api/project', { headers: getAuthHeaders() });
+        if (resp.status === 401) {
+            localStorage.removeItem('tauleaf_token');
+            showLogin();
+            return;
+        }
         project = await resp.json();
         
         if (project.files && project.files.length > 0) {
@@ -82,7 +258,11 @@ function handleWSMessage(msg) {
 
 async function loadFiles() {
     try {
-        var resp = await fetch('/api/files');
+        var resp = await fetch('/api/files', { headers: getAuthHeaders() });
+        if (resp.status === 401) {
+            showLogin();
+            return;
+        }
         var files = await resp.json();
         
         fileList.innerHTML = '';
@@ -113,7 +293,11 @@ async function selectFile(file) {
 
 async function loadFileContent(file) {
     try {
-        var resp = await fetch('/api/file?name=' + encodeURIComponent(file));
+        var resp = await fetch('/api/file?name=' + encodeURIComponent(file), { headers: getAuthHeaders() });
+        if (resp.status === 401) {
+            showLogin();
+            return;
+        }
         if (resp.ok) {
             editor.textContent = await resp.text();
         }
@@ -133,12 +317,12 @@ recompileBtn.onclick = function() {
     recompileBtn.textContent = 'Compiling...';
     
     fetch('/api/compile', { 
-        method: 'POST'
+        method: 'POST',
+        headers: getAuthHeaders()
     }).then(function(resp) {
         return resp.json();
     }).then(function(data) {
         console.log('Compile response:', data);
-        // Enable button after response (compilation runs async)
         setTimeout(function() {
             recompileBtn.disabled = false;
             recompileBtn.textContent = 'Recompile';
@@ -151,4 +335,4 @@ recompileBtn.onclick = function() {
     });
 };
 
-init();
+checkAuth();
