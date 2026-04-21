@@ -1,0 +1,17 @@
+tauleaf
+*.exe
+*.pdf
+*.log
+*.aux
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# tauleaf runtime
+.tauleaf/
+
+# Editor
+.idea/
+.vscode/
