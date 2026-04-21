@@ -1,0 +1,32 @@
+{
+  "name": "tauleaf",
+  "version": "1.0.0",
+  "description": "Self-hosted local LaTeX collaboration tool - a lightweight alternative to Overleaf with local compilation.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PodushkaPIR/tauleaf.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/PodushkaPIR/tauleaf/issues"
+  },
+  "homepage": "https://github.com/PodushkaPIR/tauleaf#readme",
+  "dependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.41.1",
+    "codemirror-lang-latex": "^0.2.0",
+    "esbuild": "^0.28.0"
+  }
+}

@@ -122,6 +122,10 @@ body {
     min-height: 0;
 }
 
+#editor-container .cm-editor {
+    height: 100%;
+}
+
 #pdf-container {
     flex: 1;
     background: #525252;

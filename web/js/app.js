@@ -24,6 +24,27 @@ var adminCreatedEl = document.getElementById('admin-created');
 var regenerateBtn = document.getElementById('regenerate-btn');
 var adminMessageEl = document.getElementById('admin-message');
 
+var cmEditor = null;
+
+function initEditor() {
+    if (cmEditor) return;
+    var fallback = document.getElementById('editor-fallback');
+
+    if (typeof CodeMirror6 !== 'undefined') {
+        var container = document.getElementById('editor-container');
+        container.innerHTML = '';
+        cmEditor = CodeMirror6.createEditor(container, {
+            initialContent: '',
+            onChange: function() {
+                saveBtn.textContent = 'Save*';
+            }
+        });
+    } else {
+        editor = fallback;
+        fallback.classList.remove('hidden');
+    }
+}
+
 function showLogin() {
     loginScreen.classList.remove('hidden');
     app.classList.add('hidden');
@@ -32,6 +53,7 @@ function showLogin() {
 function showApp() {
     loginScreen.classList.add('hidden');
     app.classList.remove('hidden');
+    initEditor();
 }
 
 function getAuthHeaders() {
@@ -235,8 +257,6 @@ function handleWSMessage(msg) {
         case 'file-changed':
             if (msg.payload === currentFile) {
                 loadFileContent(currentFile);
-                var editorEl = document.getElementById('editor');
-                editorEl.title = 'File changed by another user';
             }
             loadFiles();
             break;
@@ -325,7 +345,12 @@ async function loadFileContent(file) {
             return;
         }
         if (resp.ok) {
-            editor.value = await resp.text();
+            var content = await resp.text();
+            if (cmEditor) {
+                CodeMirror6.setValue(cmEditor, content);
+            } else {
+                editor.value = content;
+            }
         }
     } catch (e) {
         console.error('Failed to load file:', e);
@@ -365,7 +390,7 @@ saveBtn.onclick = async function() {
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving...';
 
-    var content = editor.value;
+    var content = cmEditor ? CodeMirror6.getValue(cmEditor) : editor.value;
 
     try {
         var resp = await fetch('/api/save?name=' + encodeURIComponent(currentFile), {
