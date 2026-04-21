@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>tauleaf</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     <script src="/js/editor.bundle.js"></script>
     <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -43,8 +44,10 @@
             <div class="sidebar-header">
                 <h2>Files</h2>
                 <div>
-                    <button id="upload-btn" class="small-btn">+</button>
-                    <button id="admin-btn" class="small-btn">Admin</button>
+                    <button id="file-btn" class="small-btn fa fa-file-circle-plus" title="New file"></button>
+                    <button id="folder-btn" class="small-btn fa fa-folder-plus" title="New folder"></button>
+                    <button id="upload-btn" class="small-btn fa fa-upload" title="Upload files"></button>
+                    <button id="admin-btn" class="small-btn fa fa-cog">Admin</button>
                 </div>
             </div>
             <ul id="file-list"></ul>
@@ -65,7 +68,7 @@
                 <div class="panel-header">
                     <span>PDF</span>
                     <div>
-                        <button id="logout-btn" class="small-btn">Logout</button>
+                        <button id="logout-btn" class="small-btn fa fa-sign-out-alt">Logout</button>
                         <button id="recompile-btn">Recompile</button>
                     </div>
                 </div>

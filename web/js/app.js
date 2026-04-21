@@ -141,11 +141,77 @@ regenerateBtn.onclick = async function() {
 };
 
 var uploadBtn = document.getElementById('upload-btn');
+var folderBtn = document.getElementById('folder-btn');
+var fileBtn = document.getElementById('file-btn');
 var fileInput = document.getElementById('file-input');
 
 uploadBtn.onclick = function() {
     fileInput.click();
 };
+
+folderBtn.onclick = function() {
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'folder-input';
+    input.placeholder = 'folder name...';
+    input.onkeydown = function(e) {
+        if (e.key === 'Enter' && input.value.trim()) {
+            createFolder(input.value.trim());
+            input.remove();
+        }
+        if (e.key === 'Escape') {
+            input.remove();
+        }
+    };
+    input.onblur = function() { input.remove(); };
+    fileList.appendChild(input);
+    input.focus();
+};
+
+fileBtn.onclick = function() {
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'folder-input';
+    input.placeholder = 'file.tex...';
+    input.onkeydown = function(e) {
+        if (e.key === 'Enter' && input.value.trim()) {
+            var name = input.value.trim();
+            if (!name.endsWith('.tex')) name += '.tex';
+            createFile(name);
+            input.remove();
+        }
+        if (e.key === 'Escape') {
+            input.remove();
+        }
+    };
+    input.onblur = function() { input.remove(); };
+    fileList.appendChild(input);
+    input.focus();
+};
+
+async function createFile(name) {
+    var content = '';
+    var resp = await fetch('/api/save?name=' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: content
+    });
+
+    if (resp.ok) {
+        loadFiles();
+    }
+}
+
+async function createFolder(name) {
+    var resp = await fetch('/api/mkdir?name=' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: getAuthHeaders()
+    });
+
+    if (resp.ok) {
+        loadFiles();
+    }
+}
 
 fileInput.onchange = async function() {
     if (this.files.length === 0) return;
@@ -288,44 +354,161 @@ async function loadFiles() {
             return;
         }
         var files = await resp.json();
-        
+
+        var foldersResp = await fetch('/api/folders', { headers: getAuthHeaders() });
+        var folders = foldersResp.ok ? await foldersResp.json() : [];
+
         fileList.innerHTML = '';
-        
+
+        var expandedFolders = {};
+
+        var grouped = {};
         files.forEach(function(f) {
-            var li = document.createElement('li');
+            var parts = f.split('/');
+            var folder = parts.length > 1 ? parts[0] : '';
+            if (!grouped[folder]) grouped[folder] = [];
+            grouped[folder].push(f);
+        });
 
-            var nameSpan = document.createElement('span');
-            nameSpan.textContent = f;
-            nameSpan.style.flex = '1';
-            nameSpan.onclick = function() {
-                selectFile(f);
+        folders.sort().forEach(function(folder) {
+            var folderLi = document.createElement('li');
+            folderLi.className = 'folder expanded';
+            folderLi.setAttribute('data-folder', folder);
+            folderLi.innerHTML = '<span class="folder-icon fa fa-folder-open"></span><span class="folder-name">' + folder + '</span><button class="del-btn fa fa-trash"></button>';
+            folderLi.onclick = function() {
+                this.classList.toggle('expanded');
+                this.classList.toggle('collapsed');
+                var icon = this.querySelector('.folder-icon');
+                if (icon) {
+                    icon.classList.toggle('fa-folder-open');
+                    icon.classList.toggle('fa-folder');
+                }
+                var filesUl = this.nextSibling;
+                if (filesUl && filesUl.classList && filesUl.classList.contains('folder-files')) {
+                    filesUl.style.display = this.classList.contains('expanded') ? 'block' : 'none';
+                }
             };
-
-            var delBtn = document.createElement('button');
-            delBtn.textContent = '×';
-            delBtn.className = 'del-btn';
-            delBtn.onclick = function(e) {
+            folderLi.ondragover = function(e) { e.preventDefault(); this.classList.add('drag-over'); };
+            folderLi.ondragleave = function(e) { this.classList.remove('drag-over'); };
+            folderLi.ondrop = function(e) {
+                e.preventDefault();
+                this.classList.remove('drag-over');
+                var fileName = e.dataTransfer.getData('text/plain');
+                if (fileName) {
+                    moveFile(fileName, folder + '/' + fileName.split('/').pop());
+                }
+            };
+            folderLi.onmouseover = function() { this.querySelector('.del-btn').style.opacity = '1'; };
+            folderLi.onmouseout = function() { this.querySelector('.del-btn').style.opacity = ''; };
+            folderLi.querySelector('.del-btn').onclick = function(e) {
                 e.stopPropagation();
-                if (!confirm('Delete ' + f + '?')) return;
-                fetch('/api/delete?name=' + encodeURIComponent(f), {
-                    method: 'POST',
-                    headers: getAuthHeaders()
-                }).then(function() {
-                    loadFiles();
-                });
+                if (!confirm('Delete folder "' + folder + '" and all its files?')) return;
+                deleteFolder(folder);
             };
+            fileList.appendChild(folderLi);
 
-            li.appendChild(nameSpan);
-            li.appendChild(delBtn);
+            var filesUl = document.createElement('ul');
+            filesUl.className = 'folder-files';
 
-            if (f === currentFile) {
-                li.classList.add('active');
+            if (grouped[folder]) {
+                grouped[folder].forEach(function(f) {
+                    var li = createFileElement(f);
+                    filesUl.appendChild(li);
+                });
             }
 
-            fileList.appendChild(li);
+            fileList.appendChild(filesUl);
         });
+
+        if (grouped[''] && grouped[''].length > 0) {
+            grouped[''].forEach(function(f) {
+                var li = createFileElement(f);
+                fileList.appendChild(li);
+            });
+        }
     } catch (e) {
         console.error('Failed to load files:', e);
+    }
+}
+
+function createFileElement(f) {
+    var li = document.createElement('li');
+    li.setAttribute('draggable', 'true');
+    li.setAttribute('data-file', f);
+    li.ondragstart = function(e) { e.dataTransfer.setData('text/plain', f); };
+    var ext = f.split('.').pop().toLowerCase();
+    var isTex = ext === 'tex';
+
+    var icon = isTex ? 'fa fa-file-code' : 'fa fa-file';
+
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'file-name';
+    nameSpan.innerHTML = '<span class="' + icon + '"></span><span class="file-name-text">' + f + '</span>';
+    nameSpan.style.flex = '1';
+    if (!isTex) {
+        nameSpan.style.color = '#888';
+        nameSpan.title = 'View only (.' + ext + ')';
+    }
+    nameSpan.onclick = function() {
+        selectFile(f);
+    };
+
+    var delBtn = document.createElement('button');
+    delBtn.innerHTML = '<span class="fa fa-trash"></span>';
+    delBtn.className = 'del-btn';
+    delBtn.onclick = function(e) {
+        e.stopPropagation();
+        if (!confirm('Delete ' + f + '?')) return;
+        fetch('/api/delete?name=' + encodeURIComponent(f), {
+            method: 'POST',
+            headers: getAuthHeaders()
+        }).then(function() {
+            loadFiles();
+        });
+    };
+
+    li.appendChild(nameSpan);
+    li.appendChild(delBtn);
+
+    if (f === currentFile) {
+        li.classList.add('active');
+    }
+
+    return li;
+}
+
+async function deleteFolder(name) {
+    var resp = await fetch('/api/rmdir?name=' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: getAuthHeaders()
+    });
+
+    if (resp.ok) {
+        loadFiles();
+    }
+}
+
+async function moveFile(oldPath, newPath) {
+    try {
+        var contentResp = await fetch('/api/file?name=' + encodeURIComponent(oldPath), { headers: getAuthHeaders() });
+        var content = await contentResp.text();
+
+        var saveResp = await fetch('/api/save?name=' + encodeURIComponent(newPath), {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: content
+        });
+
+        if (!saveResp.ok) throw new Error('Failed to save');
+
+        var delResp = await fetch('/api/delete?name=' + encodeURIComponent(oldPath), {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+
+        loadFiles();
+    } catch (e) {
+        alert('Failed to move file: ' + e.message);
     }
 }
 
