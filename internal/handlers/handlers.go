@@ -69,11 +69,14 @@ func Register(mux *http.ServeMux, cfg *types.Config, webDir string, auth *auth.A
 	// Protected endpoints
 	mux.HandleFunc("/api/project", h.requireAuth(h.handleProject))
 	mux.HandleFunc("/api/files", h.requireAuth(h.handleFiles))
+	mux.HandleFunc("/api/folders", h.requireAuth(h.handleFolders))
 	mux.HandleFunc("/api/file", h.requireAuth(h.handleFile))
 	mux.HandleFunc("/api/save", h.requireAuth(h.handleSaveFile))
 	mux.HandleFunc("/api/compile", h.requireAuth(h.handleCompile))
 	mux.HandleFunc("/api/upload", h.requireAuth(h.handleUpload))
 	mux.HandleFunc("/api/delete", h.requireAuth(h.handleDeleteFile))
+	mux.HandleFunc("/api/rmdir", h.requireAuth(h.handleRmdir))
+	mux.HandleFunc("/api/mkdir", h.requireAuth(h.handleMkdir))
 
 	// WebSocket
 	mux.HandleFunc("/ws", h.handleWS)
@@ -124,6 +127,15 @@ func (h *Handler) handleFiles(w http.ResponseWriter, r *http.Request) {
 		files = []string{}
 	}
 	jsonEncode(w, files)
+}
+
+func (h *Handler) handleFolders(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	folders := compile.ListFolders(h.cfg.ProjectPath)
+	if folders == nil {
+		folders = []string{}
+	}
+	jsonEncode(w, folders)
 }
 
 func (h *Handler) handleFile(w http.ResponseWriter, r *http.Request) {
@@ -382,6 +394,56 @@ func (h *Handler) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(h.cfg.ProjectPath, name)
 	if err := os.Remove(path); err != nil {
 		http.Error(w, "failed to delete file", http.StatusInternalServerError)
+		return
+	}
+
+	h.broadcast("file-changed", "refresh")
+
+	jsonEncode(w, map[string]string{"status": "deleted"})
+}
+
+func (h *Handler) handleMkdir(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing folder name", http.StatusBadRequest)
+		return
+	}
+
+	path := filepath.Join(h.cfg.ProjectPath, name)
+	if err := os.MkdirAll(path, 0755); err != nil {
+		http.Error(w, "failed to create folder", http.StatusInternalServerError)
+		return
+	}
+
+	h.broadcast("file-changed", "refresh")
+
+	jsonEncode(w, map[string]string{"status": "created"})
+}
+
+func (h *Handler) handleRmdir(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing folder name", http.StatusBadRequest)
+		return
+	}
+
+	path := filepath.Join(h.cfg.ProjectPath, name)
+	if err := os.RemoveAll(path); err != nil {
+		http.Error(w, "failed to delete folder", http.StatusInternalServerError)
 		return
 	}
 

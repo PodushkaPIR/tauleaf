@@ -85,13 +85,59 @@ func (c *Compiler) Compile() error {
 	}
 }
 
-func ListTexFiles(dir string) []string {
-	files, _ := filepath.Glob(filepath.Join(dir, "*.tex"))
-	result := make([]string, len(files))
-	for i, f := range files {
-		result[i] = filepath.Base(f)
+var SupportedExtensions = []string{".tex", ".bib", ".cls", ".sty", ".bst", ".cfg", ".lua", ".tikz"}
+
+func ListProjectFiles(dir string) []string {
+	result := make([]string, 0)
+	seen := make(map[string]bool)
+
+	walker := func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		for _, e := range SupportedExtensions {
+			if ext == e {
+				relPath, _ := filepath.Rel(dir, path)
+				if !seen[relPath] {
+					seen[relPath] = true
+					result = append(result, relPath)
+				}
+				break
+			}
+		}
+		return nil
 	}
+
+	filepath.Walk(dir, walker)
 	return result
+}
+
+func ListTexFiles(dir string) []string {
+	return ListProjectFiles(dir)
+}
+
+func ListFolders(dir string) []string {
+	var folders []string
+	seen := make(map[string]bool)
+
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			if path != dir {
+				rel, _ := filepath.Rel(dir, path)
+				if !strings.Contains(rel, "/") && !seen[rel] {
+					seen[rel] = true
+					folders = append(folders, rel)
+				}
+			}
+		}
+		return nil
+	})
+
+	return folders
 }
 
 func CheckFlags() {
