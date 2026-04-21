@@ -73,6 +73,7 @@ func Register(mux *http.ServeMux, cfg *types.Config, webDir string, auth *auth.A
 	mux.HandleFunc("/api/save", h.requireAuth(h.handleSaveFile))
 	mux.HandleFunc("/api/compile", h.requireAuth(h.handleCompile))
 	mux.HandleFunc("/api/upload", h.requireAuth(h.handleUpload))
+	mux.HandleFunc("/api/delete", h.requireAuth(h.handleDeleteFile))
 
 	// WebSocket
 	mux.HandleFunc("/ws", h.handleWS)
@@ -328,34 +329,63 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "no file provided", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
+	uploaded := []string{}
 
-	if !strings.HasSuffix(strings.ToLower(header.Filename), ".tex") {
-		http.Error(w, "only .tex files allowed", http.StatusBadRequest)
-		return
+	files := r.MultipartForm.File["files"]
+	for _, fileHeader := range files {
+		file, err := fileHeader.Open()
+		if err != nil {
+			continue
+		}
+
+		if !strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".tex") {
+			file.Close()
+			continue
+		}
+
+		dstPath := filepath.Join(h.cfg.ProjectPath, fileHeader.Filename)
+		dst, err := os.Create(dstPath)
+		if err != nil {
+			file.Close()
+			continue
+		}
+
+		io.Copy(dst, file)
+		file.Close()
+		dst.Close()
+
+		uploaded = append(uploaded, fileHeader.Filename)
 	}
 
-	dstPath := filepath.Join(h.cfg.ProjectPath, header.Filename)
-	dst, err := os.Create(dstPath)
-	if err != nil {
-		http.Error(w, "failed to create file", http.StatusInternalServerError)
-		return
-	}
-	defer dst.Close()
+	h.broadcast("file-changed", "refresh")
 
-	if _, err := io.Copy(dst, file); err != nil {
-		os.Remove(dstPath)
-		http.Error(w, "failed to save file", http.StatusInternalServerError)
-		return
-	}
-
-	jsonEncode(w, map[string]string{
-		"name": header.Filename,
-		"status": "uploaded",
+	jsonEncode(w, map[string]interface{}{
+		"uploaded": uploaded,
+		"count":   len(uploaded),
 	})
+}
+
+func (h *Handler) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		http.Error(w, "missing file name", http.StatusBadRequest)
+		return
+	}
+
+	path := filepath.Join(h.cfg.ProjectPath, name)
+	if err := os.Remove(path); err != nil {
+		http.Error(w, "failed to delete file", http.StatusInternalServerError)
+		return
+	}
+
+	h.broadcast("file-changed", "refresh")
+
+	jsonEncode(w, map[string]string{"status": "deleted"})
 }

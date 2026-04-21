@@ -128,9 +128,10 @@ uploadBtn.onclick = function() {
 fileInput.onchange = async function() {
     if (this.files.length === 0) return;
 
-    var file = this.files[0];
     var formData = new FormData();
-    formData.append('file', file);
+    for (var i = 0; i < this.files.length; i++) {
+        formData.append('files', this.files[i]);
+    }
 
     try {
         var resp = await fetch('/api/upload', {
@@ -146,7 +147,7 @@ fileInput.onchange = async function() {
         }
 
         var data = await resp.json();
-        console.log('Uploaded:', data);
+        console.log('Uploaded:', data.count, 'files');
         await loadFiles();
     } catch (e) {
         alert('Upload failed: ' + e.message);
@@ -272,13 +273,35 @@ async function loadFiles() {
         
         files.forEach(function(f) {
             var li = document.createElement('li');
-            li.textContent = f;
+
+            var nameSpan = document.createElement('span');
+            nameSpan.textContent = f;
+            nameSpan.style.flex = '1';
+            nameSpan.onclick = function() {
+                selectFile(f);
+            };
+
+            var delBtn = document.createElement('button');
+            delBtn.textContent = '×';
+            delBtn.className = 'del-btn';
+            delBtn.onclick = function(e) {
+                e.stopPropagation();
+                if (!confirm('Delete ' + f + '?')) return;
+                fetch('/api/delete?name=' + encodeURIComponent(f), {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                }).then(function() {
+                    loadFiles();
+                });
+            };
+
+            li.appendChild(nameSpan);
+            li.appendChild(delBtn);
+
             if (f === currentFile) {
                 li.classList.add('active');
             }
-            li.onclick = function() {
-                selectFile(f);
-            };
+
             fileList.appendChild(li);
         });
     } catch (e) {
@@ -342,11 +365,13 @@ saveBtn.onclick = async function() {
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving...';
 
+    var content = editor.value;
+
     try {
         var resp = await fetch('/api/save?name=' + encodeURIComponent(currentFile), {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: editor.value
+            body: content
         });
 
         if (!resp.ok) {
