@@ -5,8 +5,5 @@ services:
       - "8080:8080"
     volumes:
       - ./my-latex-project:/project
-    environment:
-      - TAU_PROJECT=/project
-      - TAU_MAIN=main.tex
-      - TAU_ENGINE=lualatex
+    command: ["tauleaf", "-project", "/project", "-main", "main.tex", "-engine", "lualatex"]
     restart: unless-stopped
