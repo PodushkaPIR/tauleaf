@@ -16,16 +16,11 @@ tauleaf
 
 # Docs
 README.md
-AGENTS.md
 docs/
-
-# Test project
-test-project/
 
 # Node
 node_modules/
 
 # IDE
 .idea/
-*.swp
-*.swo
+.vscode/
