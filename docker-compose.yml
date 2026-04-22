@@ -17,3 +17,6 @@ services:
     depends_on:
       - tauleaf
     restart: unless-stopped
+
+volumes:
+  caddy_data:
