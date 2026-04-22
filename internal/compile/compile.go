@@ -60,7 +60,7 @@ func (c *Compiler) Compile() error {
 	log.Println("Starting compile:", c.mainTex)
 	
 	cmd := exec.Command("/bin/sh", "-c", 
-		fmt.Sprintf("cd %s && %s -halt-on-errors -interaction=nonstopmode %s 2>&1 | head -100", 
+		fmt.Sprintf("cd %s && %s -interaction=nonstopmode %s 2>&1 | head -100", 
 			c.projectPath, c.engine, c.mainTex))
 	cmd.Dir = c.projectPath
 	cmd.Stdout = os.Stdout
