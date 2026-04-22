@@ -1,5 +1,8 @@
+# Build
 tauleaf
 *.exe
+
+# LaTeX
 *.pdf
 *.log
 *.aux
@@ -13,7 +16,8 @@ tauleaf
 .tauleaf/
 
 # Local projects
-my-latex-project/
+public-project/
+private-project/
 
 # Editor
 .idea/

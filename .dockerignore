@@ -1,14 +1,23 @@
+# Build
 tauleaf
 *.exe
+
+# LaTeX
 *.pdf
 *.log
 *.aux
 *.out
 *.toc
 *.synctex.gz
+*.fls
+*.fdb_latexmk
 
 # tauleaf runtime
 .tauleaf/
+
+# Local projects
+public-project/
+private-project/
 
 # Git
 .git
@@ -17,10 +26,11 @@ tauleaf
 # Docs
 README.md
 docs/
+AGENTS.md
 
 # Node
 node_modules/
 
-# IDE
+# Editor
 .idea/
 .vscode/
