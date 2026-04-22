@@ -1,0 +1,9 @@
+# Caddyfile for tauleaf
+
+tauleaf.ru {
+    reverse_proxy tauleaf:8080
+}
+
+# localhost {
+#     reverse_proxy tauleaf:8080
+# }

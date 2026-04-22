@@ -1,9 +1,19 @@
 services:
   tauleaf:
     build: .
-    ports:
-      - "8080:8080"
     volumes:
       - ./my-latex-project:/project
     command: ["tauleaf", "-project", "/project", "-main", "main.tex", "-engine", "lualatex"]
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    depends_on:
+      - tauleaf
     restart: unless-stopped
