@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -50,6 +51,13 @@ func New(cfg *types.Config, webDir string, auth *auth.Auth) *Handler {
 		clients:  make(map[*websocket.Conn]bool),
 		auth:     auth,
 	}
+}
+
+func (h *Handler) projectPath(sess *types.Session) string {
+	if sess != nil && sess.IsPublic && h.cfg.PublicProjectPath != "" {
+		return h.cfg.PublicProjectPath
+	}
+	return h.cfg.ProjectPath
 }
 
 func Register(mux *http.ServeMux, cfg *types.Config, webDir string, auth *auth.Auth) {
@@ -107,22 +115,33 @@ func Register(mux *http.ServeMux, cfg *types.Config, webDir string, auth *auth.A
 // handleProject returns project metadata as JSON
 func (h *Handler) handleProject(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	// Note: We're ignoring errors from ListTexFiles
-	files := compile.ListTexFiles(h.cfg.ProjectPath)
+
+	sess := r.Context().Value("session").(*types.Session)
+
+	projectPath := h.cfg.ProjectPath
+	if sess.IsPublic && h.cfg.PublicProjectPath != "" {
+		projectPath = h.cfg.PublicProjectPath
+	}
+
+	files := compile.ListTexFiles(projectPath)
 	if files == nil {
 		files = []string{}
 	}
+
 	jsonEncode(w, types.Project{
-		Files:    files,
-		MainTex:  h.cfg.MainTex,
-		Engine:   h.cfg.Engine,
-		PDFPath:  compile.New(h.cfg.ProjectPath, h.cfg.MainTex, h.cfg.Engine).PDFPath(),
+		Files:       files,
+		MainTex:     h.cfg.MainTex,
+		Engine:      h.cfg.Engine,
+		PDFPath:     compile.New(projectPath, h.cfg.MainTex, h.cfg.Engine).PDFPath(),
+		PublicMode:  sess.IsPublic,
+		PublicLimit: h.cfg.PublicLimit,
 	})
 }
 
 func (h *Handler) handleFiles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	files := compile.ListTexFiles(h.cfg.ProjectPath)
+	sess := r.Context().Value("session").(*types.Session)
+	files := compile.ListTexFiles(h.projectPath(sess))
 	if files == nil {
 		files = []string{}
 	}
@@ -131,7 +150,8 @@ func (h *Handler) handleFiles(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleFolders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	folders := compile.ListFolders(h.cfg.ProjectPath)
+	sess := r.Context().Value("session").(*types.Session)
+	folders := compile.ListFolders(h.projectPath(sess))
 	if folders == nil {
 		folders = []string{}
 	}
@@ -150,7 +170,8 @@ func (h *Handler) handleFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := filepath.Join(h.cfg.ProjectPath, name)
+	sess := r.Context().Value("session").(*types.Session)
+	path := filepath.Join(h.projectPath(sess), name)
 	content, err := os.ReadFile(path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -181,7 +202,20 @@ func (h *Handler) handleSaveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := filepath.Join(h.cfg.ProjectPath, name)
+	sess := r.Context().Value("session").(*types.Session)
+	basePath := h.projectPath(sess)
+	path := filepath.Join(basePath, name)
+
+	if sess.IsPublic && h.cfg.PublicLimit > 0 {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			files := compile.ListTexFiles(basePath)
+			if len(files) >= h.cfg.PublicLimit {
+				http.Error(w, "public limit reached: max 10 files", http.StatusForbidden)
+				return
+			}
+		}
+	}
+
 	if err := os.WriteFile(path, content, 0644); err != nil {
 		http.Error(w, "failed to save file", http.StatusInternalServerError)
 		return
@@ -203,6 +237,9 @@ func (h *Handler) handleCompile(w http.ResponseWriter, r *http.Request) {
 
 	h.broadcast("compiling", true)
 
+	sess := r.Context().Value("session").(*types.Session)
+	basePath := h.projectPath(sess)
+
 	go func() {
 		defer func() {
 			if rec := recover(); rec != nil {
@@ -210,7 +247,7 @@ func (h *Handler) handleCompile(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
-		c := compile.New(h.cfg.ProjectPath, h.cfg.MainTex, h.cfg.Engine)
+		c := compile.New(basePath, h.cfg.MainTex, h.cfg.Engine)
 		err := c.Compile()
 		if err != nil {
 			log.Println("compile error:", err)
@@ -250,11 +287,19 @@ func (h *Handler) requireAuth(fn func(http.ResponseWriter, *http.Request)) func(
 		if token == "" {
 			token = r.URL.Query().Get("token")
 		}
-		if token == "" || !h.auth.Validate(token) {
+		if token == "" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		fn(w, r)
+
+		sess := h.auth.GetSession(token)
+		if sess == nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "session", sess)
+		fn(w, r.WithContext(ctx))
 	}
 }
 
@@ -341,6 +386,26 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sess := r.Context().Value("session").(*types.Session)
+	basePath := h.projectPath(sess)
+
+	if sess.IsPublic && h.cfg.PublicLimit > 0 {
+		files := compile.ListTexFiles(basePath)
+		currentCount := len(files)
+
+		newFiles := 0
+		for _, f := range r.MultipartForm.File["files"] {
+			if strings.HasSuffix(strings.ToLower(f.Filename), ".tex") {
+				newFiles++
+			}
+		}
+
+		if currentCount+newFiles > h.cfg.PublicLimit {
+			http.Error(w, "public limit reached: max 10 files", http.StatusForbidden)
+			return
+		}
+	}
+
 	uploaded := []string{}
 
 	files := r.MultipartForm.File["files"]
@@ -355,7 +420,7 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		dstPath := filepath.Join(h.cfg.ProjectPath, fileHeader.Filename)
+		dstPath := filepath.Join(basePath, fileHeader.Filename)
 		dst, err := os.Create(dstPath)
 		if err != nil {
 			file.Close()
@@ -391,7 +456,8 @@ func (h *Handler) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := filepath.Join(h.cfg.ProjectPath, name)
+	sess := r.Context().Value("session").(*types.Session)
+	path := filepath.Join(h.projectPath(sess), name)
 	if err := os.Remove(path); err != nil {
 		http.Error(w, "failed to delete file", http.StatusInternalServerError)
 		return
@@ -416,7 +482,18 @@ func (h *Handler) handleMkdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := filepath.Join(h.cfg.ProjectPath, name)
+	sess := r.Context().Value("session").(*types.Session)
+	basePath := h.projectPath(sess)
+
+	if sess.IsPublic && h.cfg.PublicLimit > 0 {
+		files := compile.ListTexFiles(basePath)
+		if len(files) >= h.cfg.PublicLimit {
+			http.Error(w, "public limit reached: max 10 files", http.StatusForbidden)
+			return
+		}
+	}
+
+	path := filepath.Join(basePath, name)
 	if err := os.MkdirAll(path, 0755); err != nil {
 		http.Error(w, "failed to create folder", http.StatusInternalServerError)
 		return
@@ -441,7 +518,8 @@ func (h *Handler) handleRmdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := filepath.Join(h.cfg.ProjectPath, name)
+	sess := r.Context().Value("session").(*types.Session)
+	path := filepath.Join(h.projectPath(sess), name)
 	if err := os.RemoveAll(path); err != nil {
 		http.Error(w, "failed to delete folder", http.StatusInternalServerError)
 		return
