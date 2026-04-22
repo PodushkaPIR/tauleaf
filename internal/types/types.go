@@ -13,23 +13,29 @@ func GenerateToken() string {
 }
 
 type Config struct {
-	ProjectPath string
-	MainTex     string
-	Engine      string
-	Addr        string
-	AccessCode  string
+	ProjectPath       string
+	PublicProjectPath string
+	MainTex           string
+	Engine            string
+	Addr              string
+	AccessCode        string
+	PublicMode        bool
+	PublicCode        string
+	PublicLimit       int
 }
 
 type Project struct {
-	Files    []string `json:"files"`
-	MainTex  string   `json:"mainTex"`
-	Engine  string   `json:"engine"`
-	PDFPath string   `json:"pdfPath"`
+	Files         []string `json:"files"`
+	MainTex       string   `json:"mainTex"`
+	Engine        string   `json:"engine"`
+	PDFPath       string   `json:"pdfPath"`
+	PublicMode    bool     `json:"publicMode,omitempty"`
+	PublicLimit   int     `json:"publicLimit,omitempty"`
 }
 
 type WSMessage struct {
 	Type    string      `json:"type"`
-	Payload interface{} `json:"payload"`
+	Payload any         `json:"payload"`
 }
 
 type Comment struct {
@@ -56,8 +62,10 @@ type AuthResponse struct {
 }
 
 type Session struct {
-	Token   string    `json:"token"`
-	Created time.Time `json:"created"`
+	Token    string    `json:"token"`
+	Created  time.Time `json:"created"`
+	IsPublic bool     `json:"isPublic,omitempty"`
+	IsAdmin  bool     `json:"isAdmin,omitempty"`
 }
 
 type SessionStore struct {
