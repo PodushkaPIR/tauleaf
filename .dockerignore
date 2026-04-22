@@ -15,10 +15,6 @@ tauleaf
 # tauleaf runtime
 .tauleaf/
 
-# Local projects
-public-project/
-private-project/
-
 # Git
 .git
 .gitignore

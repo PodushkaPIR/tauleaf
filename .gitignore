@@ -16,8 +16,7 @@ tauleaf
 .tauleaf/
 
 # Local projects
-public-project/
-private-project/
+# Note: private-project/ is for your personal use - add secrets here
 
 # Editor
 .idea/

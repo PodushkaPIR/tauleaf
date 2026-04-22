@@ -2,7 +2,7 @@ services:
   tauleaf:
     build: .
     volumes:
-      - ./my-latex-project:/project
+      - ./private-project:/project
     command: ["tauleaf", "-project", "/project", "-main", "main.tex", "-engine", "lualatex"]
     restart: unless-stopped
 
