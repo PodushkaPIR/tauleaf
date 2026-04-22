@@ -113,8 +113,11 @@ logoutBtn.onclick = async function() {
 };
 
 adminBtn.onclick = async function() {
+    if (project.publicMode) return;
+
     var resp = await fetch('/api/admin/config', { headers: getAuthHeaders() });
     var data = await resp.json();
+
     adminCodeEl.textContent = data.access_code;
     adminCreatedEl.textContent = new Date(data.created).toLocaleString();
     adminMessageEl.classList.add('hidden');
@@ -273,6 +276,10 @@ async function init() {
     await loadProject();
     connectWebSocket();
     await loadFiles();
+
+    if (project.publicMode) {
+        adminBtn.classList.add('hidden');
+    }
 }
 
 async function loadProject() {
