@@ -14,28 +14,32 @@ import (
 )
 
 type Auth struct {
-	mu           sync.RWMutex
-	sessions     map[string]*types.Session
-	accessCode  string
-	created     time.Time
-	configPath  string
+	mu          sync.RWMutex
+	sessions    map[string]*types.Session
+	adminCode   string
+	created    time.Time
+	configPath string
+	public    bool
+	publicCode string
 }
 
-func New(projectPath, accessCode string) *Auth {
-	if accessCode == "" {
-		accessCode = generateAccessCode()
-	}
-
+func New(projectPath, adminCode string, public bool, publicCode string) *Auth {
 	dir := filepath.Join(projectPath, ".tauleaf")
 	os.MkdirAll(dir, 0755)
 
 	created := time.Now()
 
+	if adminCode == "" {
+		adminCode = generateAccessCode()
+	}
+
 	return &Auth{
-		sessions:    make(map[string]*types.Session),
-		accessCode: accessCode,
-		created:     created,
+		sessions:   make(map[string]*types.Session),
+		adminCode:  adminCode,
+		created:   created,
 		configPath: filepath.Join(dir, "config.json"),
+		public:    public,
+		publicCode: publicCode,
 	}
 }
 
@@ -47,7 +51,7 @@ func generateAccessCode() string {
 
 func (a *Auth) SaveConfig() error {
 	cfg := types.AccessConfig{
-		AccessCode: a.accessCode,
+		AccessCode: a.adminCode,
 		Created:    time.Now(),
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -58,19 +62,38 @@ func (a *Auth) SaveConfig() error {
 }
 
 func (a *Auth) GetAccessCode() string {
-	return a.accessCode
+	return a.adminCode
+}
+
+func (a *Auth) IsPublicMode() bool {
+	return a.public
+}
+
+func (a *Auth) GetPublicCode() string {
+	return a.publicCode
+}
+
+func (a *Auth) GetPublicLimit() int {
+	if a.public {
+		return 10
+	}
+	return 0
 }
 
 func (a *Auth) Login(code string) (string, error) {
-	if code != a.accessCode {
+	if code != a.adminCode && code != a.publicCode {
 		return "", fmt.Errorf("invalid access code")
 	}
+
+	isPublic := code == a.publicCode
 
 	token := types.GenerateToken()
 	a.mu.Lock()
 	a.sessions[token] = &types.Session{
-		Token:   token,
-		Created: time.Now(),
+		Token:    token,
+		Created:  time.Now(),
+		IsPublic: isPublic,
+		IsAdmin:  !isPublic,
 	}
 	a.mu.Unlock()
 
@@ -87,6 +110,18 @@ func (a *Auth) Validate(token string) bool {
 	return false
 }
 
+func (a *Auth) GetSession(token string) *types.Session {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if sess, ok := a.sessions[token]; ok {
+		if time.Since(sess.Created) < 24*time.Hour {
+			return sess
+		}
+	}
+	return nil
+}
+
 func (a *Auth) Logout(token string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -101,11 +136,11 @@ func (a *Auth) Regenerate() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	a.accessCode = generateAccessCode()
+	a.adminCode = generateAccessCode()
 	a.created = time.Now()
 
 	cfg := types.AccessConfig{
-		AccessCode: a.accessCode,
+		AccessCode: a.adminCode,
 		Created:    a.created,
 	}
 	data, _ := json.MarshalIndent(cfg, "", "  ")
@@ -113,5 +148,5 @@ func (a *Auth) Regenerate() string {
 
 	a.sessions = make(map[string]*types.Session)
 
-	return a.accessCode
+	return a.adminCode
 }
