@@ -90,8 +90,11 @@ func Register(mux *http.ServeMux, cfg *types.Config, webDir string, auth *auth.A
 	mux.HandleFunc("/ws", h.handleWS)
 
 	mux.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
+		sess := r.Context().Value("session").(*types.Session)
+		projectPath := h.projectPath(sess)
+
 		name := strings.TrimPrefix(r.URL.Path, "/static/")
-		path := filepath.Join(h.cfg.ProjectPath, name)
+		path := filepath.Join(projectPath, name)
 
 		fi, err := os.Stat(path)
 		if err != nil || fi.IsDir() {
