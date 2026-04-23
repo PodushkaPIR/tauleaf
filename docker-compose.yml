@@ -3,7 +3,8 @@ services:
     build: .
     volumes:
       - ./private-project:/project
-    command: ["tauleaf", "-project", "/project", "-main", "main.tex", "-engine", "lualatex"]
+      - ./public-project:/public
+    command: ["tauleaf", "-project", "/project", "-public", "-public-code", "demo", "-public-project", "/public", "-main", "main.tex", "-engine", "lualatex"]
     restart: unless-stopped
 
   caddy:
