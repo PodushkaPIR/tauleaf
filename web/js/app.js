@@ -549,7 +549,8 @@ async function loadFileContent(file) {
 
 function refreshPDF() {
     if (project && project.pdfPath) {
-        pdfViewer.src = '/static/' + project.pdfPath + '?t=' + Date.now();
+        var token = localStorage.getItem('tauleaf_token');
+        pdfViewer.src = '/static/' + project.pdfPath + '?t=' + Date.now() + '&token=' + token;
     }
 }
 

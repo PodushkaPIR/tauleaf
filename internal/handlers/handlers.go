@@ -90,13 +90,22 @@ func Register(mux *http.ServeMux, cfg *types.Config, webDir string, auth *auth.A
 	mux.HandleFunc("/ws", h.handleWS)
 
 	mux.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
-		sessVal := r.Context().Value("session")
-		if sessVal == nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
+		token := r.Header.Get("Authorization")
+		if token == "" {
+			token = r.URL.Query().Get("token")
 		}
-		sess := sessVal.(*types.Session)
-		projectPath := h.projectPath(sess)
+
+		var projectPath string
+		if token != "" {
+			sess := h.auth.GetSession(token)
+			if sess != nil {
+				projectPath = h.projectPath(sess)
+			}
+		}
+
+		if projectPath == "" {
+			projectPath = h.cfg.ProjectPath
+		}
 
 		name := strings.TrimPrefix(r.URL.Path, "/static/")
 		path := filepath.Join(projectPath, name)
