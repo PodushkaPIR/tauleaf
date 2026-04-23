@@ -90,7 +90,12 @@ func Register(mux *http.ServeMux, cfg *types.Config, webDir string, auth *auth.A
 	mux.HandleFunc("/ws", h.handleWS)
 
 	mux.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
-		sess := r.Context().Value("session").(*types.Session)
+		sessVal := r.Context().Value("session")
+		if sessVal == nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		sess := sessVal.(*types.Session)
 		projectPath := h.projectPath(sess)
 
 		name := strings.TrimPrefix(r.URL.Path, "/static/")
